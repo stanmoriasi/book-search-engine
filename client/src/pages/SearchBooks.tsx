@@ -8,27 +8,38 @@ import {
   Card,
   Row
 } from 'react-bootstrap';
-
-import Auth from '../utils/auth';
-import { saveBook, searchGoogleBooks } from '../utils/API';
-import { saveBookIds, getSavedBookIds } from '../utils/localStorage';
+import {GET_ME} from '../utils/graphql/queries'
+import { SAVE_BOOK } from '../utils/graphql/mutations';
+import Auth from '../utils/auth'
 import type { Book } from '../models/Book';
 import type { GoogleAPIBook } from '../models/GoogleAPIBook';
+import { useMutation, useQuery } from '@apollo/client';
+import { searchGoogleBooks } from '../utils/API';
 
 const SearchBooks = () => {
   // create state for holding returned google api data
   const [searchedBooks, setSearchedBooks] = useState<Book[]>([]);
+
+  const [addBook, { error }] = useMutation
+  (SAVE_BOOK, {
+    refetchQueries: [
+      GET_ME,
+      'me'
+    ]
+  });
+
+
   // create state for holding our search field data
   const [searchInput, setSearchInput] = useState('');
+  const { loading, data } = useQuery(GET_ME);
 
   // create state to hold saved bookId values
-  const [savedBookIds, setSavedBookIds] = useState(getSavedBookIds());
+  const [savedBookIds, setSavedBookIds] = useState([]);
 
-  // set up useEffect hook to save `savedBookIds` list to localStorage on component unmount
-  // learn more here: https://reactjs.org/docs/hooks-effect.html#effects-with-cleanup
   useEffect(() => {
-    return () => saveBookIds(savedBookIds);
-  });
+    const bookIds = data?.me?.savedBooks?.map((b: Book)=> b.bookId )
+    setSavedBookIds(bookIds)
+  }, [data])
 
   // create method to search for books and set state on form submit
   const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -75,14 +86,12 @@ const SearchBooks = () => {
     }
 
     try {
-      const response = await saveBook(bookToSave, token);
+      const { data } = await addBook({
+        variables: { book: bookToSave },
+      });
 
-      if (!response.ok) {
-        throw new Error('something went wrong!');
-      }
-
-      // if book successfully saves to user's account, save book id to state
-      setSavedBookIds([...savedBookIds, bookToSave.bookId]);
+      const bookIds = data?.user?.savedBooks?.map((b: Book)=> b.bookId )
+      setSavedBookIds(bookIds);
     } catch (err) {
       console.error(err);
     }
